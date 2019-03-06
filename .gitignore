@@ -102,3 +102,12 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# MacOS
+.DS_Store
+**/.DS_Store
+
+# WikiHow
+*.csv
+articles/
+

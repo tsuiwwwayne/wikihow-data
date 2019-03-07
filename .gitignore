@@ -110,4 +110,5 @@ venv.bak/
 # WikiHow
 *.csv
 articles/
-
+articles_tokenized/
+finished_files/

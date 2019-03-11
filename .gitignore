@@ -112,3 +112,4 @@ venv.bak/
 articles/
 articles_tokenized/
 finished_files/
+log/

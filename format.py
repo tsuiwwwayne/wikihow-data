@@ -34,7 +34,7 @@ finished_files_dir = "finished_files"
 chunks_dir = os.path.join(finished_files_dir, "chunked")
 
 # These are the number of articles files we expect there to be in articles
-num_expected_articles = 180026
+num_expected_articles = 180022
 
 VOCAB_SIZE = 200000
 CHUNK_SIZE = 1000 # Number of examples per chunk, for the chunked data

@@ -28,9 +28,9 @@ all_train_titles = "all_train.txt"
 all_test_titles = "all_test.txt"
 all_val_titles = "all_val.txt"
 
-articles_dir = "articles"
-tokenized_articles_dir = "articles_tokenized"
-finished_files_dir = "finished_files"
+articles_dir = "articles_fd"
+tokenized_articles_dir = "articles_fd_tokenized"
+finished_files_dir = "finished_files_fd"
 chunks_dir = os.path.join(finished_files_dir, "chunked")
 
 # These are the number of articles files we expect there to be in articles
@@ -41,7 +41,7 @@ CHUNK_SIZE = 1000 # Number of examples per chunk, for the chunked data
 
 
 def chunk_file(set_name):
-    in_file = 'finished_files/%s.bin' % set_name
+    in_file = finished_files_dir + '/%s.bin' % set_name
     reader = open(in_file, "rb")
     chunk = 0
     finished = False
@@ -115,8 +115,6 @@ def get_title_hashes(title_list):
 
 def fix_missing_period(line):
     """Adds a period to a line that is missing a period"""
-    if "@summary" in line: return line
-    if line == "": return line
     if line[-1] in END_TOKENS: return line
     return line + " ."
 
@@ -132,25 +130,35 @@ def get_article_summary(article_file):
 
     # Separate out article and abstract sentences
     article_lines = []
+    fact_description_lines = []
     summary_lines = []
+    is_next_fact_description = False
     is_next_summary = False
     for idx, line in enumerate(lines):
         if line == '':
           continue # empty line
         elif line.startswith("@summary"):
+          is_next_fact_description = False
           is_next_summary = True
+        elif line.startswith("@fact_descriptions"):
+          is_next_fact_description = True
         elif is_next_summary:
-          summary_lines.append(line)
+          summary_lines.append(fix_missing_period(line))
+        elif is_next_fact_description:
+          fact_description_lines.append(line)
         else:
-          article_lines.append(line)
+          article_lines.append(fix_missing_period(line))
 
     # Make article into a single string
     article = ' '.join(article_lines)
 
+    # Make fact descriptions into a single string, with ||| as a separator
+    fact_descriptions = ' ||| '.join(fact_description_lines)
+
     # Make summary into a single string, putting <s> and </s> tags around the sentences
     summary = ' '.join(["%s %s %s" % (SENTENCE_START, sent, SENTENCE_END) for sent in summary_lines])
 
-    return article, summary
+    return article, fact_descriptions, summary
 
 
 def write_to_bin(titles_file, out_file, makevocab=False):
@@ -180,11 +188,12 @@ def write_to_bin(titles_file, out_file, makevocab=False):
                 raise Exception("Tokenized articles directory %s contain correct number of files but article file %s was not found." % (tokenized_articles_dir, article_file_name))
 
             # Get the strings to write to .bin file
-            article, summary = get_article_summary(article_file)
+            article, fact_descriptions, summary = get_article_summary(article_file)
 
             # Write to tf.Example
             tf_example = example_pb2.Example()
             tf_example.features.feature['article'].bytes_list.value.extend([article.encode()])
+            tf_example.features.feature['fact_descriptions'].bytes_list.value.extend([fact_descriptions.encode()])
             # key is 'abstract' because downstream pointer generator code retrieves the summary text via 'abstract' key
             tf_example.features.feature['abstract'].bytes_list.value.extend([summary.encode()])
 

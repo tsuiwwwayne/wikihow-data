@@ -6,4 +6,5 @@ Clean, process and format the WikiHow dataset (https://github.com/mahnazkoupaee/
 2. Run clean.py
 3. Run process.py
 4. Run split.py (optional, can use same pre-split titles in all_train.txt, all_test.txt and all_val.txt)
-5. Run format.py
+5. Compile and run FactDescriptionAppender.java (supply file path of this repository as argument)
+6. Run format.py

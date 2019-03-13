@@ -28,9 +28,9 @@ all_train_titles = "all_train.txt"
 all_test_titles = "all_test.txt"
 all_val_titles = "all_val.txt"
 
-paragraphs_dir = "paragraphs"
-tokenized_paragraphs_dir = "paragraphs_tokenized"
-finished_files_dir = "finished_files_paragraphs"
+paragraphs_dir = "paragraphs_fd"
+tokenized_paragraphs_dir = "paragraphs_fd_tokenized"
+finished_files_dir = "finished_files_paragraphs_fd"
 chunks_dir = os.path.join(finished_files_dir, "chunked")
 
 # These are the number of paragraphs files we expect there to be in paragraphs
@@ -115,8 +115,6 @@ def get_title_hashes(title_list):
 
 def fix_missing_period(line):
     """Adds a period to a line that is missing a period"""
-    if "@summary" in line: return line
-    if line == "": return line
     if line[-1] in END_TOKENS: return line
     return line + " ."
 
@@ -127,30 +125,37 @@ def get_paragraph_summary(paragraph_file):
     # Lowercase everything
     lines = [line.lower() for line in lines]
 
-    # Put periods on the ends of lines that are missing them
-    lines = [fix_missing_period(line) for line in lines]
-
     # Separate out paragraph and abstract sentences
     paragraph_lines = []
+    fact_description_lines = []
     summary_lines = []
+    is_next_fact_description = False
     is_next_summary = False
     for idx, line in enumerate(lines):
         if line == '':
           continue # empty line
         elif line.startswith("@summary"):
+          is_next_fact_description = False
           is_next_summary = True
+        elif line.startswith("@fact_descriptions"):
+          is_next_fact_description = True
         elif is_next_summary:
-          summary_lines.append(line)
+          summary_lines.append(fix_missing_period(line))
+        elif is_next_fact_description:
+          fact_description_lines.append(line)
         else:
-          paragraph_lines.append(line)
+          paragraph_lines.append(fix_missing_period(line))
 
     # Make paragraph into a single string
     paragraph = ' '.join(paragraph_lines)
 
+    # Make fact descriptions into a single string, with ||| as a separator
+    fact_descriptions = ' ||| '.join(fact_description_lines)
+
     # Make summary into a single string, putting <s> and </s> tags around the sentences
     summary = ' '.join(["%s %s %s" % (SENTENCE_START, sent, SENTENCE_END) for sent in summary_lines])
 
-    return paragraph, summary
+    return paragraph, fact_descriptions, summary
 
 
 def write_to_bin(titles_file, out_file, makevocab=False):
@@ -180,14 +185,14 @@ def write_to_bin(titles_file, out_file, makevocab=False):
                 raise Exception("Tokenized paragraphs directory %s contain correct number of files but paragraph file %s was not found." % (tokenized_paragraphs_dir, paragraph_file_name))
 
             # Get the strings to write to .bin file
-            paragraph, summary = get_paragraph_summary(paragraph_file)
+            paragraph, fact_descriptions, summary = get_paragraph_summary(paragraph_file)
 
             # Write to tf.Example
             tf_example = example_pb2.Example()
             # Key is 'article'/'abstract' because downstream pointer generator
             # code retrieves the paragraph/summary text via 'article'/'abstract' key
             tf_example.features.feature['article'].bytes_list.value.extend([paragraph.encode()])
-            # key is 'abstract' because downstream pointer generator code
+            tf_example.features.feature['fact_descriptions'].bytes_list.value.extend([fact_descriptions.encode()])
             tf_example.features.feature['abstract'].bytes_list.value.extend([summary.encode()])
 
             tf_example_str = tf_example.SerializeToString()

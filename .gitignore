@@ -107,9 +107,14 @@ venv.bak/
 .DS_Store
 **/.DS_Store
 
+# Java
+*.class
+
 # WikiHow
 *.csv
 articles/
 articles_tokenized/
+articles_fd/
+articles_fd_tokenized/
 finished_files/
 log/

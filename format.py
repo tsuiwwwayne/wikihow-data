@@ -125,9 +125,6 @@ def get_article_summary(article_file):
     # Lowercase everything
     lines = [line.lower() for line in lines]
 
-    # Put periods on the ends of lines that are missing them
-    lines = [fix_missing_period(line) for line in lines]
-
     # Separate out article and abstract sentences
     article_lines = []
     fact_description_lines = []

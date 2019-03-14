@@ -117,4 +117,10 @@ articles_tokenized/
 articles_fd/
 articles_fd_tokenized/
 finished_files/
+paragraphs/
+paragraphs_tokenized/
+paragraphs_fd/
+paragraphs_fd_tokenized/
+finished_files_paragraphs/
 log/
+log_fd/

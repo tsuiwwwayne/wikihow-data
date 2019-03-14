@@ -1,7 +1,7 @@
 import random
 
-NUM_TEST_LIMIT = 6000
-NUM_VAL_LIMIT = 6000
+NUM_TEST_LIMIT = 50000
+NUM_VAL_LIMIT = 50000
 
 with open('titles.txt', 'rb') as file_in:
     titles = [(random.random(), line) for line in file_in]

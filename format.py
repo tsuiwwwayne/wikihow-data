@@ -28,20 +28,20 @@ all_train_titles = "all_train.txt"
 all_test_titles = "all_test.txt"
 all_val_titles = "all_val.txt"
 
-articles_dir = "articles"
-tokenized_articles_dir = "articles_tokenized"
-finished_files_dir = "finished_files"
+paragraphs_dir = "paragraphs_fd"
+tokenized_paragraphs_dir = "paragraphs_fd_tokenized"
+finished_files_dir = "finished_files_paragraphs_fd"
 chunks_dir = os.path.join(finished_files_dir, "chunked")
 
-# These are the number of articles files we expect there to be in articles
-num_expected_articles = 180022
+# These are the number of paragraphs files we expect there to be in paragraphs
+num_expected_paragraphs = 1263069
 
 VOCAB_SIZE = 200000
 CHUNK_SIZE = 1000 # Number of examples per chunk, for the chunked data
 
 
 def chunk_file(set_name):
-    in_file = 'finished_files/%s.bin' % set_name
+    in_file = finished_files_dir + '/%s.bin' % set_name
     reader = open(in_file, "rb")
     chunk = 0
     finished = False
@@ -71,27 +71,27 @@ def chunk_all():
     print("Saved chunked data in %s" % chunks_dir)
 
 
-def tokenize_articles(articles_dir, tokenized_articles_dir):
-    """Maps a whole directory of article files to a tokenized version using Stanford CoreNLP Tokenizer"""
-    print("Preparing to tokenize %s to %s..." % (articles_dir, tokenized_articles_dir))
-    articles = os.listdir(articles_dir)
+def tokenize_paragraphs(paragraphs_dir, tokenized_paragraphs_dir):
+    """Maps a whole directory of paragraph files to a tokenized version using Stanford CoreNLP Tokenizer"""
+    print("Preparing to tokenize %s to %s..." % (paragraphs_dir, tokenized_paragraphs_dir))
+    paragraphs = os.listdir(paragraphs_dir)
     # make IO list file
     print("Making list of files to tokenize...")
     with open("mapping.txt", "w") as f:
-        for article in articles:
-            f.write("%s \t %s\n" % (os.path.join(articles_dir, article), os.path.join(tokenized_articles_dir, article)))
+        for paragraph in paragraphs:
+            f.write("%s \t %s\n" % (os.path.join(paragraphs_dir, paragraph), os.path.join(tokenized_paragraphs_dir, paragraph)))
     command = ['java', 'edu.stanford.nlp.process.PTBTokenizer', '-ioFileList', '-preserveLines', 'mapping.txt']
-    print("Tokenizing %i files in %s and saving in %s..." % (len(articles), articles_dir, tokenized_articles_dir))
+    print("Tokenizing %i files in %s and saving in %s..." % (len(paragraphs), paragraphs_dir, tokenized_paragraphs_dir))
     subprocess.call(command)
     print("Stanford CoreNLP Tokenizer has finished.")
     os.remove("mapping.txt")
 
-    # Check that the tokenized articles directory contains the same number of files as the original directory
-    num_orig = len(os.listdir(articles_dir))
-    num_tokenized = len(os.listdir(tokenized_articles_dir))
+    # Check that the tokenized paragraphs directory contains the same number of files as the original directory
+    num_orig = len(os.listdir(paragraphs_dir))
+    num_tokenized = len(os.listdir(tokenized_paragraphs_dir))
     if num_orig != num_tokenized:
-        raise Exception("The tokenized articles directory %s contains %i files, but it should contain the same number as %s (which has %i files). Was there an error during tokenization?" % (tokenized_articles_dir, num_tokenized, articles_dir, num_orig))
-    print("Successfully finished tokenizing %s to %s.\n" % (articles_dir, tokenized_articles_dir))
+        raise Exception("The tokenized paragraphs directory %s contains %i files, but it should contain the same number as %s (which has %i files). Was there an error during tokenization?" % (tokenized_paragraphs_dir, num_tokenized, paragraphs_dir, num_orig))
+    print("Successfully finished tokenizing %s to %s.\n" % (paragraphs_dir, tokenized_paragraphs_dir))
 
 
 def read_text_file(text_file):
@@ -115,77 +115,84 @@ def get_title_hashes(title_list):
 
 def fix_missing_period(line):
     """Adds a period to a line that is missing a period"""
-    if "@summary" in line: return line
-    if line == "": return line
     if line[-1] in END_TOKENS: return line
     return line + " ."
 
 
-def get_article_summary(article_file):
-    lines = read_text_file(article_file)
+def get_paragraph_summary(paragraph_file):
+    lines = read_text_file(paragraph_file)
 
     # Lowercase everything
     lines = [line.lower() for line in lines]
 
-    # Put periods on the ends of lines that are missing them
-    lines = [fix_missing_period(line) for line in lines]
-
-    # Separate out article and abstract sentences
-    article_lines = []
+    # Separate out paragraph and abstract sentences
+    paragraph_lines = []
+    fact_description_lines = []
     summary_lines = []
+    is_next_fact_description = False
     is_next_summary = False
     for idx, line in enumerate(lines):
         if line == '':
           continue # empty line
         elif line.startswith("@summary"):
+          is_next_fact_description = False
           is_next_summary = True
+        elif line.startswith("@fact_descriptions"):
+          is_next_fact_description = True
         elif is_next_summary:
-          summary_lines.append(line)
+          summary_lines.append(fix_missing_period(line))
+        elif is_next_fact_description:
+          fact_description_lines.append(line)
         else:
-          article_lines.append(line)
+          paragraph_lines.append(fix_missing_period(line))
 
-    # Make article into a single string
-    article = ' '.join(article_lines)
+    # Make paragraph into a single string
+    paragraph = ' '.join(paragraph_lines)
+
+    # Make fact descriptions into a single string, with ||| as a separator
+    fact_descriptions = ' ||| '.join(fact_description_lines)
 
     # Make summary into a single string, putting <s> and </s> tags around the sentences
     summary = ' '.join(["%s %s %s" % (SENTENCE_START, sent, SENTENCE_END) for sent in summary_lines])
 
-    return article, summary
+    return paragraph, fact_descriptions, summary
 
 
 def write_to_bin(titles_file, out_file, makevocab=False):
-    """Reads the tokenized article files corresponding to the titles listed in titles_file and writes them to a out_file."""
-    print("Making bin file for articles listed in %s..." % titles_file)
+    """Reads the tokenized paragraph files corresponding to the titles listed in titles_file and writes them to a out_file."""
+    print("Making bin file for paragraphs listed in %s..." % titles_file)
     titles_list = read_text_file(titles_file)
     titles_hexdigests = get_title_hashes(titles_list)
-    article_file_names = [f + '.txt' for f in titles_hexdigests]
-    num_articles = len(article_file_names)
+    paragraph_file_names = [f + '.txt' for f in titles_hexdigests]
+    num_paragraphs = len(paragraph_file_names)
 
     if makevocab:
         vocab_counter = collections.Counter()
 
     with open(out_file, 'wb') as writer:
-        for idx, article_file_name in enumerate(article_file_names):
+        for idx, paragraph_file_name in enumerate(paragraph_file_names):
             if idx % 1000 == 0:
-                print("Writing article %i of %i; %.2f percent done" % (idx, num_articles, float(idx)*100.0/float(num_articles)))
+                print("Writing paragraph %i of %i; %.2f percent done" % (idx, num_paragraphs, float(idx)*100.0/float(num_paragraphs)))
 
             # Look in the tokenized story dirs to find the .story file corresponding to this url
-            if os.path.isfile(os.path.join(tokenized_articles_dir, article_file_name)):
-                article_file = os.path.join(tokenized_articles_dir, article_file_name)
+            if os.path.isfile(os.path.join(tokenized_paragraphs_dir, paragraph_file_name)):
+                paragraph_file = os.path.join(tokenized_paragraphs_dir, paragraph_file_name)
             else:
-                print("Error: Couldn't find tokenized article file %s in tokenized articles directory %s. Was there an error during tokenization?" % (article_file_name, tokenized_articles_dir))
-                # Check again if tokenized articles directory contain correct number of files
-                print("Checking that the tokenized articles directory %s contain correct number of files..." % (tokenized_articles_dir))
-                check_num_articles(tokenized_articles_dir, num_expected_articles)
-                raise Exception("Tokenized articles directory %s contain correct number of files but article file %s was not found." % (tokenized_articles_dir, article_file_name))
+                print("Error: Couldn't find tokenized paragraph file %s in tokenized paragraphs directory %s. Was there an error during tokenization?" % (paragraph_file_name, tokenized_paragraphs_dir))
+                # Check again if tokenized paragraphs directory contain correct number of files
+                print("Checking that the tokenized paragraphs directory %s contain correct number of files..." % (tokenized_paragraphs_dir))
+                check_num_paragraphs(tokenized_paragraphs_dir, num_expected_paragraphs)
+                raise Exception("Tokenized paragraphs directory %s contain correct number of files but paragraph file %s was not found." % (tokenized_paragraphs_dir, paragraph_file_name))
 
             # Get the strings to write to .bin file
-            article, summary = get_article_summary(article_file)
+            paragraph, fact_descriptions, summary = get_paragraph_summary(paragraph_file)
 
             # Write to tf.Example
             tf_example = example_pb2.Example()
-            tf_example.features.feature['article'].bytes_list.value.extend([article.encode()])
-            # key is 'abstract' because downstream pointer generator code retrieves the summary text via 'abstract' key
+            # Key is 'article'/'abstract' because downstream pointer generator
+            # code retrieves the paragraph/summary text via 'article'/'abstract' key
+            tf_example.features.feature['article'].bytes_list.value.extend([paragraph.encode()])
+            tf_example.features.feature['fact_descriptions'].bytes_list.value.extend([fact_descriptions.encode()])
             tf_example.features.feature['abstract'].bytes_list.value.extend([summary.encode()])
 
             tf_example_str = tf_example.SerializeToString()
@@ -195,10 +202,10 @@ def write_to_bin(titles_file, out_file, makevocab=False):
 
             # Write the vocab to file, if applicable
             if makevocab:
-                article_tokens = article.split(' ')
+                paragraph_tokens = paragraph.split(' ')
                 summary_tokens = summary.split(' ')
                 summary_tokens = [t for t in summary_tokens if t not in [SENTENCE_START, SENTENCE_END]] # remove these tags from vocab
-                tokens = article_tokens + summary_tokens
+                tokens = paragraph_tokens + summary_tokens
                 tokens = [t.strip() for t in tokens] # strip
                 tokens = [t for t in tokens if t != ""] # remove empty
                 vocab_counter.update(tokens)
@@ -214,24 +221,24 @@ def write_to_bin(titles_file, out_file, makevocab=False):
         print("Finished writing vocab file")
 
 
-def check_num_articles(articles_dir, num_expected):
-    num_articles = len(os.listdir(articles_dir))
-    if num_articles != num_expected:
-        raise Exception("Articles directory %s contains %i files but should contain %i" % (articles_dir, num_articles, num_expected))
+def check_num_paragraphs(paragraphs_dir, num_expected):
+    num_paragraphs = len(os.listdir(paragraphs_dir))
+    if num_paragraphs != num_expected:
+        raise Exception("paragraphs directory %s contains %i files but should contain %i" % (paragraphs_dir, num_paragraphs, num_expected))
 
 
 if __name__ == '__main__':
-    # Check the articles directory contain the correct number of article files
-    check_num_articles(articles_dir, num_expected_articles)
+    # Check the paragraphs directory contain the correct number of paragraph files
+    check_num_paragraphs(paragraphs_dir, num_expected_paragraphs)
 
     # Create some new directories
-    if not os.path.exists(tokenized_articles_dir): os.makedirs(tokenized_articles_dir)
+    if not os.path.exists(tokenized_paragraphs_dir): os.makedirs(tokenized_paragraphs_dir)
     if not os.path.exists(finished_files_dir): os.makedirs(finished_files_dir)
 
-    # Run stanford tokenizer on articles directory, outputting to tokenized articles directory
-    tokenize_articles(articles_dir, tokenized_articles_dir)
+    # Run stanford tokenizer on paragraphs directory, outputting to tokenized paragraphs directory
+    tokenize_paragraphs(paragraphs_dir, tokenized_paragraphs_dir)
 
-    # Read the tokenized articles, do a little postprocessing then write to bin files
+    # Read the tokenized paragraphs, do a little postprocessing then write to bin files
     write_to_bin(all_train_titles, os.path.join(finished_files_dir, 'train.bin'), makevocab=True)
     write_to_bin(all_test_titles, os.path.join(finished_files_dir, 'test.bin'))
     write_to_bin(all_val_titles, os.path.join(finished_files_dir, 'val.bin'))

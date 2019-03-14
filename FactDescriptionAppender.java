@@ -30,6 +30,9 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class FactDescriptionAppender {
@@ -207,53 +210,63 @@ public class FactDescriptionAppender {
         );
         StanfordCoreNLP pipeline = new StanfordCoreNLP(props);
 
+        ExecutorService executorService = Executors.newFixedThreadPool(8);
+
         File inputDirectory = new File(inputPath);
         File[] inputFiles = inputDirectory.listFiles();
-        int numFilesProcessed = 0;
+        final AtomicInteger numFilesProcessed = new AtomicInteger(0);
         if (inputFiles != null) {
             for (File inputFile : inputFiles) {
                 if (inputFile.isFile()) {
-                    // Open file, and get paragraph, summary
-                    boolean isSummary = false;
-                    StringBuilder paragraphTextBuilder = new StringBuilder();
-                    StringBuilder summaryTextBuilder = new StringBuilder();
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                            new FileInputStream(inputFile), StandardCharsets.UTF_8))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            if (line.startsWith("@summary")) {
-                                isSummary = true;
-                            } else if (isSummary) {
-                                summaryTextBuilder.append(line).append("\n");
-                            } else {
-                                paragraphTextBuilder.append(line).append("\n");
+                    Runnable task = () -> {
+                        try {
+                            // Open file, and get paragraph, summary
+                            boolean isSummary = false;
+                            StringBuilder paragraphTextBuilder = new StringBuilder();
+                            StringBuilder summaryTextBuilder = new StringBuilder();
+                            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                                    new FileInputStream(inputFile), StandardCharsets.UTF_8))) {
+                                String line;
+                                while ((line = reader.readLine()) != null) {
+                                    if (line.startsWith("@summary")) {
+                                        isSummary = true;
+                                    } else if (isSummary) {
+                                        summaryTextBuilder.append(line).append("\n");
+                                    } else {
+                                        paragraphTextBuilder.append(line).append("\n");
+                                    }
+                                }
                             }
+                            String paragraphText = paragraphTextBuilder.toString();
+                            String summaryText = summaryTextBuilder.toString();
+
+                            // Pass paragraph text to generate fact descriptions
+                            List<List<String>> factDescriptionTokens = generate(pipeline, paragraphText);
+                            String factDescriptionText = factDescriptionTokens.stream()
+                                    .map(lineTokens -> String.join(" ", lineTokens))
+                                    .map(line -> line + "\n")
+                                    .collect(Collectors.joining(""));
+
+                            // Write paragraph, fact descriptions and summary to paragraphs_fd directory with same file name
+                            String outputFileName = outputPath + "/" + inputFile.getName();
+                            File outputFile = new File(outputFileName);
+                            outputFile.getParentFile().mkdir();
+                            try (OutputStreamWriter writer =
+                                         new OutputStreamWriter(new FileOutputStream(outputFile), StandardCharsets.UTF_8)) {
+                                writer.write(paragraphText);
+                                writer.write("@fact_descriptions\n");
+                                writer.write(factDescriptionText);
+                                writer.write("@summary\n");
+                                writer.write(summaryText);
+                            }
+                            numFilesProcessed.getAndIncrement();
+                        } catch (IOException e) {
+                            e.printStackTrace();
                         }
-                    }
-                    String paragraphText = paragraphTextBuilder.toString();
-                    String summaryText = summaryTextBuilder.toString();
-
-                    // Pass paragraph text to generate fact descriptions
-                    List<List<String>> factDescriptionTokens = generate(pipeline, paragraphText);
-                    String factDescriptionText = factDescriptionTokens.stream()
-                            .map(lineTokens -> String.join(" ", lineTokens))
-                            .map(line -> line + "\n")
-                            .collect(Collectors.joining(""));
-
-                    // Write paragraph, fact descriptions and summary to paragraphs_fd directory with same file name
-                    String outputFileName = outputPath + "/" + inputFile.getName();
-                    File outputFile = new File(outputFileName);
-                    outputFile.getParentFile().mkdir();
-                    try (OutputStreamWriter writer =
-                                 new OutputStreamWriter(new FileOutputStream(outputFile), StandardCharsets.UTF_8)) {
-                        writer.write(paragraphText);
-                        writer.write("@fact_descriptions\n");
-                        writer.write(factDescriptionText);
-                        writer.write("@summary\n");
-                        writer.write(summaryText);
-                    }
+                    };
+                    executorService.execute(task);
                 }
-                if (++numFilesProcessed % 1000 == 0) {
+                if (numFilesProcessed.get() % 1000 == 0) {
                     System.out.println(String.format("Number of files processed: %d/%d", numFilesProcessed, inputFiles.length));
                 }
             }

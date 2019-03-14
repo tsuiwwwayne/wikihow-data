@@ -1,8 +1,8 @@
 '''
 Reference: https://github.com/mahnazkoupaee/WikiHow-Dataset/blob/master/process.py
-This code is used to create article and summary files from the csv file.
-The output of the file will be a directory of text files representing separate articles and their summaries.
-Every file starts with the article followed by its summary, separated by the "@summary" tag.
+This code is used to create paragraph and summary files from the csv file.
+The output of the file will be a directory of text files representing separate paragraphs and their summaries.
+Every file starts with the paragraph followed by its summary, separated by the "@summary" tag.
 '''
 import pandas as pd
 import os
@@ -16,26 +16,26 @@ def hashhex(s):
     return h.hexdigest()
 
 # read data from the csv file (from the location it is stored)
-df = pd.read_csv(r'wikihowAll_cleaned.csv')
+df = pd.read_csv(r'wikihowSep_cleaned.csv')
 df = df.astype(str)
 rows, columns = df.shape
 
 # create a file to record the file names. This can be later used to divide the dataset in train/dev/test sets
 title_file = open('titles.txt', 'wb')
 
-# The path where the articles are to be saved
-path = "articles"
+# The path where the paragraphs are to be saved
+path = "paragraphs"
 if not os.path.exists(path): os.makedirs(path)
 
-# go over the all the articles in the data file
+# go over the all the paragraphs in the data file
 for row in range(rows):
     summary = df.ix[row,'headline'] # headline is the column representing the summary
-    article = df.ix[row,'text']     # text is the column representing the article
+    paragraph = df.ix[row,'text']     # text is the column representing the paragraph
 
-    # A threshold is used to remove short articles with long summaries as well as articles with no summary
-    if len(summary) < (0.75 * len(article)) and len(summary) != 0:
+    # A threshold is used to remove short paragraphs with long summaries as well as paragraphs with no summary
+    if len(summary) < (0.75 * len(paragraph)) and len(summary) != 0:
         summary = summary.encode('utf-8')
-        article = article.encode('utf-8')
+        paragraph = paragraph.encode('utf-8')
 
         # Store WikiHow titles into text file
         title = df.ix[row,'title']
@@ -47,9 +47,9 @@ for row in range(rows):
         filename = title_hexdigest + '.txt'
 
         with open(path + '/' + filename,'wb') as f:
-            f.write(article)
+            f.write(paragraph)
             f.write(b'\n')
-            # Separate article and summary with tag
+            # Separate paragraph and summary with tag
             f.write(b'@summary' + b'\n')
             f.write(summary)
             f.write(b'\n')

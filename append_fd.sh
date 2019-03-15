@@ -1,0 +1,1 @@
+java FactDescriptionAppender . &> ../log/append_fd_log &
